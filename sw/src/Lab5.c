@@ -39,19 +39,26 @@
 #include "../inc/PLL.h"
 #include "../inc/ST7735.h"
 #include "Receiver.h"
-#include "Transmitter.h"
+#include "button.h"
+#include "fifo_format.h"
+#include "DAC.h"
 #include "../inc/dsp.h"
 
 
 void DisableInterrupts(void);           // Disable interrupts
 void EnableInterrupts(void);            // Enable interrupts
+
+Fifo inputFifo;
+
 int main(void){
   DisableInterrupts();
   PLL_Init(Bus80MHz);    // bus clock at 80 MHz
-  // write this
+  Fifo_Init(&inputFifo);  // Initialize the FIFO
+  PortF_Init();
+  SSI_init();
+  DAC_Init();
   EnableInterrupts();
   while(1){
-      // write this
   }
 }
 

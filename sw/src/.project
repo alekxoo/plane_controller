@@ -41,21 +41,6 @@
 			<locationURI>PARENT-1-PROJECT_LOC/inc/ST7735.c</locationURI>
 		</link>
 		<link>
-			<name>TExaS.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/inc/TExaS.c</locationURI>
-		</link>
-		<link>
-			<name>TLV5616.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/inc/TLV5616.c</locationURI>
-		</link>
-		<link>
-			<name>Timer0A.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/inc/Timer0A.c</locationURI>
-		</link>
-		<link>
 			<name>Timer1A.c</name>
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/inc/Timer1A.c</locationURI>
