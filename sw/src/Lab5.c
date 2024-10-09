@@ -38,16 +38,15 @@
 #include "../inc/Texas.h"
 #include "../inc/PLL.h"
 #include "../inc/ST7735.h"
-#include "Receiver.h"
 #include "button.h"
 #include "fifo_format.h"
+#include "decoder.h"
 #include "DAC.h"
 #include "../inc/dsp.h"
 
 
 void DisableInterrupts(void);           // Disable interrupts
 void EnableInterrupts(void);            // Enable interrupts
-
 Fifo inputFifo;
 
 int main(void){
@@ -59,6 +58,27 @@ int main(void){
   DAC_Init();
   EnableInterrupts();
   while(1){
+      uint32_t symbol = Decoder_Process();
+
+      // Handle the decoded symbol
+      switch(symbol) {
+          case 1:
+              // Handle Symbol 1
+              GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | 0x02; // Red LED
+              break;
+          case 2:
+              // Handle Symbol 2
+              GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | 0x04; // Blue LED
+              break;
+          case 3:
+              // Handle Symbol 3
+              GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | 0x08; // Green LED
+              break;
+          default:
+              // No signal or unknown symbol
+              GPIO_PORTF_DATA_R &= ~0x0E; // All LEDs off
+              break;
+      }
   }
 }
 

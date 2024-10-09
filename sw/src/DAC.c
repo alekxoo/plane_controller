@@ -14,24 +14,26 @@
 
 
 const uint16_t Wave[64] = {
-  2048, 2244, 2438, 2628, 2814, 2990, 3160, 3316, 3462, 3596, 3710,
-  3812, 3896, 3958, 4002, 4030, 4048, 4030, 4002, 3958, 3896, 3812,
-  3710, 3596, 3462, 3316, 3160, 2990, 2814, 2628, 2438, 2244, 2048,
-  1852, 1658, 1468, 1282, 1108,  938,  784,  628,  494,  380,  278,
-   186,  116,   54,   10,    0,   10,   54,  116,  186,  278,  380,
-   494,  628,  784,  938, 1108, 1282, 1468, 1658, 1852
+    1024, 1122, 1219, 1314, 1407, 1495, 1580, 1658, 1731, 1798, 1855,
+    1906, 1948, 1979, 2001, 2015, 2024, 2015, 2001, 1979, 1948, 1906,
+    1855, 1798, 1731, 1658, 1580, 1495, 1407, 1314, 1219, 1122, 1024,
+    926,  829,  734,  641,  554,  469,  392,  314,  247,  190,  139,
+     93,   58,   27,    5,    0,    5,   27,   58,   93,  139,  190,
+    247,  314,  392,  469,  554,  641,  734,  829,  926
 };
+
 
 #define SYSTEM_CLOCK 80000000  // Assuming 80 MHz system clock
 #define WAVE_SAMPLES 64        // Number of samples per wave cycle
 #define DAC_SAMPLE_RATE 44100 // Define your desired sample rate
-#define OUTPUT_DURATION_MS 50  // 50 ms output duration
-#define OUTPUT_DURATION_SAMPLES (OUTPUT_DURATION_MS * DAC_SAMPLE_RATE / 1000)
+#define OUTPUT_DURATION_MS 500  // 5 sec output duration
+#define OUTPUT_DURATION_SAMPLES (DAC_SAMPLE_RATE * OUTPUT_DURATION_MS / 1000)
 
 volatile uint32_t current_frequency = 0;
 volatile uint8_t DAC_OutputEnabled = 0;
 volatile uint32_t sample_counter = 0;
 volatile uint32_t wave_index = 0;
+volatile uint32_t increment_value = 1; // New variable for frequency control
 
 // Add this function to initialize Port D
 void PortD_Init(void) {
@@ -43,7 +45,7 @@ void PortD_Init(void) {
 
 
 void SSI_init(void);
-static void Timer0A_Init(uint32_t period);
+static void Timer0A_Init(uint32_t frequency);
 
 void DAC_Init(void) {
     SSI_init();
@@ -102,11 +104,8 @@ static void Timer0A_Init(uint32_t frequency) {
 
 void set_frequency(uint32_t frequency) {
     current_frequency = frequency;
-    uint32_t period = SYSTEM_CLOCK / (frequency * WAVE_SAMPLES);
-
-    TIMER0_CTL_R = 0x00000000;    // Disable Timer0A during reconfiguration
-    TIMER0_TAILR_R = period - 1;  // Set new reload value
-    TIMER0_CTL_R |= 0x00000001;   // Re-enable Timer0A
+    // Calculate the increment value based on the desired frequency
+    increment_value = (uint32_t)((float)frequency * WAVE_SAMPLES / DAC_SAMPLE_RATE * 65536);
 }
 
 void DAC_Start(void) {
@@ -123,16 +122,35 @@ void Timer0A_Handler(void) {
     TIMER0_ICR_R = TIMER_ICR_TATOCINT;  // Clear the timer interrupt flag
 
     if (DAC_OutputEnabled) {
-        if (sample_counter == 0) {
-            // Get new frequency from encoder
+        if (sample_counter < OUTPUT_DURATION_SAMPLES) {
+            // Output the current sample
+            DAC_Out(Wave[wave_index >> 10]); // Use the upper 6 bits of wave_index
+
+            // Update wave index for next sample using the increment value
+            wave_index = (wave_index + increment_value) & 0xFFFF;
+
+            sample_counter++;
+        } else {
+            // Stop output after OUTPUT_DURATION_MS
+            DAC_OutputEnabled = 0;
+            DAC_Out(1024);  // Output middle voltage when no sound (adjusted for 11-bit)
+            GPIO_PORTD_DATA_R &= ~0x03;  // Turn off both LEDs
+
+            // Get new frequency from encoder for next cycle
             current_frequency = Encoder_Process();
-            if (current_frequency == 0) {
-                DAC_OutputEnabled = 0;
-                DAC_Out(2048);  // Output middle voltage when no sound
-                GPIO_PORTD_DATA_R &= ~0x03;  // Turn off both LEDs
-                return;
-            }
-            wave_index = 0;  // Reset wave index for new frequency
+            set_frequency(current_frequency); // Update the frequency
+
+            // Reset counters for next cycle
+            sample_counter = 0;
+            wave_index = 0;
+        }
+    } else {
+        // Check if we should start a new cycle
+        if (current_frequency != 0) {
+            DAC_OutputEnabled = 1;
+            sample_counter = 0;
+            wave_index = 0;
+            set_frequency(current_frequency); // Ensure frequency is set correctly
 
             // Set LED indicators based on frequency
             if (current_frequency == 330) {
@@ -144,30 +162,12 @@ void Timer0A_Handler(void) {
             } else {
                 GPIO_PORTD_DATA_R &= ~0x03;  // Turn off both LEDs for other frequencies
             }
+        } else {
+            GPIO_PORTD_DATA_R &= ~0x03;  // Turn off both LEDs when output is disabled
+            DAC_Out(1024);  // Output middle voltage when disabled (adjusted for 11-bit)
         }
-
-        // Output the current sample
-        DAC_Out(Wave[wave_index]);
-
-        // Update wave index for next sample
-        wave_index = (wave_index + 1) % WAVE_SAMPLES;
-
-        sample_counter++;
-        if (sample_counter >= OUTPUT_DURATION_SAMPLES) {
-            sample_counter = 0;
-            // Immediately try to get the next frequency
-            current_frequency = Encoder_Process();
-            if (current_frequency == 0) {
-                DAC_OutputEnabled = 0;
-                DAC_Out(2048);  // Output middle voltage when no sound
-                GPIO_PORTD_DATA_R &= ~0x03;  // Turn off both LEDs
-            }
-        }
-    } else {
-        GPIO_PORTD_DATA_R &= ~0x03;  // Turn off both LEDs when output is disabled
     }
 }
-
 
 void DAC_EnableOutput(uint8_t enable) {
     DAC_OutputEnabled = enable;

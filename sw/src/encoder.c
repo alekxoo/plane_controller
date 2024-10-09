@@ -23,6 +23,8 @@ uint16_t Encoder_Process(void) {
     uint8_t input;
     if (Fifo_Get(&inputFifo, &input)) {
         currentSymbol = input;
+    } else {
+        currentSymbol = 0;
     }
 
     switch (currentSymbol) {
