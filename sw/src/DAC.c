@@ -34,6 +34,13 @@ volatile uint8_t DAC_OutputEnabled = 0;
 volatile uint32_t sample_counter = 0;
 volatile uint32_t wave_index = 0;
 volatile uint32_t increment_value = 1; // New variable for frequency control
+volatile uint32_t sync_counter = 0;
+volatile uint8_t is_sync_tone = 0;
+
+#define SYNC_FREQUENCY 5000
+#define SYNC_DURATION_MS 1000  // 1 second sync tone
+#define SYNC_DURATION_SAMPLES (DAC_SAMPLE_RATE * SYNC_DURATION_MS / 1000)
+
 
 // Add this function to initialize Port D
 void PortD_Init(void) {
@@ -122,7 +129,21 @@ void Timer0A_Handler(void) {
     TIMER0_ICR_R = TIMER_ICR_TATOCINT;  // Clear the timer interrupt flag
 
     if (DAC_OutputEnabled) {
-        if (sample_counter < OUTPUT_DURATION_SAMPLES) {
+        if (is_sync_tone) {
+            // Output 5kHz sync tone
+            static uint32_t sync_wave_index = 0;
+            uint32_t sync_increment = (uint32_t)((float)SYNC_FREQUENCY * WAVE_SAMPLES / DAC_SAMPLE_RATE * 65536);
+
+            DAC_Out(Wave[sync_wave_index >> 10]);
+            sync_wave_index = (sync_wave_index + sync_increment) & 0xFFFF;
+
+            sync_counter++;
+            if (sync_counter >= SYNC_DURATION_SAMPLES) {
+                is_sync_tone = 0;
+                sync_counter = 0;
+                sync_wave_index = 0;
+            }
+        } else if (sample_counter < OUTPUT_DURATION_SAMPLES) {
             // Output the current sample
             DAC_Out(Wave[wave_index >> 10]); // Use the upper 6 bits of wave_index
 
@@ -143,6 +164,7 @@ void Timer0A_Handler(void) {
             // Reset counters for next cycle
             sample_counter = 0;
             wave_index = 0;
+            is_sync_tone = 1;  // Prepare to start with sync tone in next cycle
         }
     } else {
         // Check if we should start a new cycle
@@ -151,6 +173,7 @@ void Timer0A_Handler(void) {
             sample_counter = 0;
             wave_index = 0;
             set_frequency(current_frequency); // Ensure frequency is set correctly
+            is_sync_tone = 1;  // Start with sync tone
 
             // Set LED indicators based on frequency
             if (current_frequency == 330) {
