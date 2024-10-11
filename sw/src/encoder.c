@@ -20,7 +20,7 @@ extern Fifo inputFifo;
 static uint8_t currentSymbol = 0;
 
 uint16_t Encoder_Process(void) {
-    uint8_t input;
+    uint16_t input;
     if (Fifo_Get(&inputFifo, &input)) {
         currentSymbol = input;
     } else {

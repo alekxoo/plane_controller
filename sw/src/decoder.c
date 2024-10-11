@@ -6,6 +6,7 @@
 #define SAMPLE_RATE 44100
 #define BUFFER_SIZE 1024
 #define FREQ_THRESHOLD 50
+#define FREQ_THRESHOLD_HIGH 500
 
 // Define frequency ranges for each symbol
 #define FREQ_RANGE_SYMBOL0 0
@@ -13,9 +14,20 @@
 #define FREQ_RANGE_SYMBOL2 1000
 #define FREQ_RANGE_SYMBOL3 660
 
+#define SYNC_FREQ 5000
+#define SYNC_DURATION 0.01 // seconds
+#define SYNC_TOLERANCE 0.1 // 10% tolerance for sync interruptions
+
 Fifo sampleFifo;
 uint16_t samples[BUFFER_SIZE];
 volatile uint32_t sampleIndex = 0;
+volatile uint32_t detected_freq;
+
+volatile uint8_t is_synced = 0;
+volatile uint32_t sync_start_time = 0;
+volatile uint32_t message_start_time = 0;
+volatile uint32_t sync_duration = 0;
+volatile uint32_t last_sync_time = 0;
 
 void Timer2A_Init(void);
 void ADC0_Init(void);
@@ -38,10 +50,12 @@ void Decoder_Init(void) {
 uint32_t Decoder_Process(void) {
     uint16_t sample;
     uint32_t detected_freq;
+    uint32_t current_time = TIMER2_TAV_R;
+    static uint32_t last_sync_check_time = 0;
 
     // Fill the sample buffer
     for (int i = 0; i < BUFFER_SIZE; i++) {
-        while (!Fifo_Get(&sampleFifo, (uint8_t*)&sample)) {
+        while (!Fifo_Get(&sampleFifo, (uint16_t*)&sample)) {
             // Wait for samples
         }
         samples[i] = sample;
@@ -50,8 +64,46 @@ uint32_t Decoder_Process(void) {
     // Perform simple frequency detection
     detected_freq = simple_frequency_detection(samples, BUFFER_SIZE);
 
+    // Check for sync tone if not synced
+    if (!is_synced) {
+        if (abs(detected_freq - SYNC_FREQ) < FREQ_THRESHOLD_HIGH) {
+            if (sync_start_time == 0) {
+                sync_start_time = current_time;
+                last_sync_time = current_time;
+            } else {
+                sync_duration += current_time - last_sync_time;
+                last_sync_time = current_time;
+
+                if (sync_duration >= (SYNC_DURATION * SAMPLE_RATE)) {
+                    is_synced = 1;
+                    message_start_time = current_time;
+                    sync_start_time = 0;
+                    sync_duration = 0;
+                    return 0; // Synced, but no symbol yet
+                }
+            }
+        } else {
+            // Check if we're within tolerance
+            if (current_time - last_sync_time > (SYNC_TOLERANCE * SYNC_DURATION * SAMPLE_RATE)) {
+                // Outside tolerance, reset sync
+                sync_start_time = 0;
+                sync_duration = 0;
+            }
+        }
+        return 0; // Not synced, don't process symbols
+    }
+
+    // Check if we need to reset is_synced (every 1 second)
+    if (current_time - last_sync_check_time >= 0.01*SAMPLE_RATE) {
+        last_sync_check_time = current_time;
+        if (abs(detected_freq - SYNC_FREQ) >= 0) {
+            is_synced = 0;
+            return 0; // Lost sync, don't process symbols
+        }
+    }
+
     // Determine which symbol was sent based on the detected frequency
-    if (detected_freq < FREQ_THRESHOLD) {
+    if (detected_freq < 100) {
         // No button pressed
         GPIO_PORTE_DATA_R &= ~0x08; // Turn off PE3
         GPIO_PORTF_DATA_R &= ~0x0E; // Turn off PF1, PF2, PF3
@@ -119,6 +171,7 @@ void Timer2A_Handler(void) {
     Fifo_Put(&sampleFifo, (uint8_t)(result >> 4));  // Store 8-bit sample in FIFO
 }
 
+volatile uint32_t zero_crossings;
 uint32_t simple_frequency_detection(uint16_t* buffer, uint32_t buffer_size) {
     uint32_t zero_crossings = 0;
     int16_t prev_sample = (int16_t)buffer[0] - 128;  // Convert to signed
@@ -132,5 +185,6 @@ uint32_t simple_frequency_detection(uint16_t* buffer, uint32_t buffer_size) {
     }
 
     // Calculate frequency: zero crossings * (sample rate / 2) / buffer size
+//    return (2 * buffer_size) / (zero_crossings * SAMPLE_RATE)
     return (zero_crossings * SAMPLE_RATE) / (2 * buffer_size);
 }

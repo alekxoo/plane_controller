@@ -56,6 +56,7 @@ int main(void){
   PortF_Init();
   SSI_init();
   DAC_Init();
+  Decoder_Init();
   EnableInterrupts();
   while(1){
       uint32_t symbol = Decoder_Process();
