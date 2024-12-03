@@ -33,54 +33,112 @@
 //   PE3 PF3, PF2, PF1, LEDs
 //   PA2-PA7, SSI0, ST7735R
 
+#define CR 0x0D   // or 13 in decimal, '\r' in character notation
+#define LF 0x0A   // or 10 in decimal, '\n' in character notation
+
 #include <stdint.h>
 #include "../inc/tm4c123gh6pm.h"
 #include "../inc/Texas.h"
 #include "../inc/PLL.h"
 #include "../inc/ST7735.h"
-#include "button.h"
 #include "fifo_format.h"
-#include "decoder.h"
-#include "DAC.h"
-#include "../inc/dsp.h"
-
+#include "../inc/UART.h"
+#include "joystick.h"
+#include "../inc/Timer1A.h"
+#include "../inc/Timer2A.h"
+#include "../inc/Timer3A.h"
+#include "screen_controller.h"
+#include "HC12.h"
 
 void DisableInterrupts(void);           // Disable interrupts
 void EnableInterrupts(void);            // Enable interrupts
-Fifo inputFifo;
+void WaitForInterrupt(void);
 
-int main(void){
-  DisableInterrupts();
-  PLL_Init(Bus80MHz);    // bus clock at 80 MHz
-  Fifo_Init(&inputFifo);  // Initialize the FIFO
-  PortF_Init();
-  SSI_init();
-  DAC_Init();
-  Decoder_Init();
-  EnableInterrupts();
-  while(1){
-      uint32_t symbol = Decoder_Process();
+char receivedChar;
+uint32_t data[4];
 
-      // Handle the decoded symbol
-      switch(symbol) {
-          case 1:
-              // Handle Symbol 1
-              GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | 0x02; // Red LED
-              break;
-          case 2:
-              // Handle Symbol 2
-              GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | 0x04; // Blue LED
-              break;
-          case 3:
-              // Handle Symbol 3
-              GPIO_PORTF_DATA_R = (GPIO_PORTF_DATA_R & ~0x0E) | 0x08; // Green LED
-              break;
-          default:
-              // No signal or unknown symbol
-              GPIO_PORTF_DATA_R &= ~0x0E; // All LEDs off
-              break;
-      }
-  }
+// Function to control Power LED
+void Power_LED_On(void) {
+    GPIO_PORTD_DATA_R |= 0x08;          // Set PD3 (Power LED)
 }
+
+void Power_LED_Off(void) {
+    GPIO_PORTD_DATA_R &= ~0x08;         // Clear PD3 (Power LED)
+}
+
+// Function to control Receive LED
+void Receive_LED_On(void) {
+    GPIO_PORTD_DATA_R |= 0x80;          // Set PD7 (Receive LED)
+}
+
+void Receive_LED_Off(void) {
+    GPIO_PORTD_DATA_R &= ~0x80;         // Clear PD7 (Receive LED)
+}
+
+//debug code
+int main(void){
+      DisableInterrupts();
+      PLL_Init(Bus80MHz);               // set system clock to 80 MHz
+      PortB_Init();
+      PortD_Init();
+      PortF_Init();
+      Power_LED_On();
+      JoystickInit();
+      display_init();
+      HC12_Init();
+
+      Timer1A_Init(&joystick_handler, 400000, 1);
+      Timer2A_Init(&send_data, 1600000, 2); // 800,000 cycles = 10ms period = 100 Hz
+      Timer3A_Init(&receive, 400000, 5); // 40,000,000 cycles = 4s period = 4 Hz
+      DrawStartupScreen();
+
+      EnableInterrupts();
+      while(1) {
+              ST7735_SetCursor(0,0);
+              ST7735_OutString("Left Y:");
+              ST7735_SetCursor(0,1);
+              ST7735_OutString("Right X:");
+              ST7735_SetCursor(0,2);
+              ST7735_OutString("Right Y:");
+              ST7735_SetCursor(0,5);
+              ST7735_OutString("v-ref: ");
+
+
+              // Update display
+              ST7735_SetCursor(8,0);
+              ST7735_OutUDec(g_left_y);
+              ST7735_OutString("   ");
+
+              ST7735_SetCursor(8,1);
+              ST7735_OutUDec(g_right_x);
+              ST7735_OutString("   ");
+
+              ST7735_SetCursor(8,2);
+              ST7735_OutUDec(g_right_y);
+              ST7735_OutString("   ");
+
+              ST7735_SetCursor(8,5);
+              ST7735_OutUDec(g_value);
+              ST7735_OutString("   ");
+
+              if (g_value < 3075)
+              {
+                  ST7735_SetCursor(0,6);
+                  ST7735_OutString("Battery Low!!!");
+                  ST7735_SetCursor(0,7);
+                  ST7735_OutString("Return Flight!!!");
+
+              }
+              else
+              {
+                  ST7735_SetCursor(0,6);
+                  ST7735_OutString("Battery Good!!!");
+                  ST7735_SetCursor(0,7);
+                  ST7735_OutString("Keep Flying!!!");
+              }
+//          WaitForInterrupt();
+      }
+}
+
 
 

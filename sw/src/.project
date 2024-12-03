@@ -35,20 +35,5 @@
 			<type>1</type>
 			<locationURI>PARENT-1-PROJECT_LOC/inc/PLL.c</locationURI>
 		</link>
-		<link>
-			<name>ST7735.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/inc/ST7735.c</locationURI>
-		</link>
-		<link>
-			<name>Timer1A.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/inc/Timer1A.c</locationURI>
-		</link>
-		<link>
-			<name>dsp.c</name>
-			<type>1</type>
-			<locationURI>PARENT-1-PROJECT_LOC/inc/dsp.c</locationURI>
-		</link>
 	</linkedResources>
 </projectDescription>
